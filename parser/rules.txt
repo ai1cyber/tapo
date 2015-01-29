@@ -1,0 +1,52 @@
+type UNDETERMINED 			detail "This stall could not be determined."
+type DATA_UNAVAILABLE		detail "Data is not available at server end."
+type RESOURCE_CONSTRAINT	detail "Server could not inject data into TCP stack."
+type TAIL_LOSS				detail "Packet loss at the end of TCP transfer."
+type DOUBLE_RETRANSMISSION	detail "The retransmitted packet is dropped."
+type SMALL_INIT_RWND		detail "The initial recieve window is smaller than 4 MSS."
+type SMALL_RWND				detail "Packet loss happens when the receive window is smaller than 4 MSS."
+type SMALL_CWND				detail "Packet loss happens when the congestion window is smaller than 4 MSS."
+type CONTINUOUS_LOSS		detail "All the outstanding packets are lost."
+type ACK_DELAY_LOSS			detail "There is no packet loss, but the acknowledgment arrives too late."
+type PACKET_DELAY			detail "RTT jitter (current RTT is larger than (\\tau SRTT))."
+type LARGE_DUPTHRES			detail "The dupthres value is larger than 3 MSS."
+type CLIENT_IDLE			detail "Client does not issue request."
+type ZERO_WINDOW			detail "The receive window is zero now."
+
+condition head == 1
+true type DATA_UNAVAILABLE
+false condition tail == 1
+	true condition lost > 0
+		true type TAIL_LOSS
+		false type CLIENT_IDLE
+	false condition lost + spurious > 0
+		true condition cur_pkt_lost > 2
+			true type DOUBLE_RETRANSMISSION
+			false condition outstanding <= 3
+				true condition rwnd <= 3
+					true condition init_rwnd <= 3
+						true type SMALL_INIT_RWND
+						false condition lost > 0
+							true type SMALL_RWND
+							false condition cur_pkt_spurious > 0
+								true type ACK_DELAY_LOSS
+								false type UNDETERMINED
+					false condition lost > 0
+						true type SMALL_CWND
+						false condition cur_pkt_spurious > 0
+							true type ACK_DELAY_LOSS
+							false type UNDETERMINED
+				false condition sacked_out > 3
+					true type LARGE_DUPTHRES
+					false condition lost > 0
+						true condition lost == outstanding
+							true type CONTINUOUS_LOSS
+							false type UNDETERMINED
+						false condition cur_pkt_spurious > 0
+							true type ACK_DELAY_LOSS
+							false type UNDETERMINED
+		false condition rwnd < max_snd_seg_size
+			true type ZERO_WINDOW
+			false condition cur_pkt_dir == 2
+				true type RESOURCE_CONSTRAINT
+				false type PACKET_DELAY
